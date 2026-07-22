@@ -1,16 +1,172 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-:root {
-  --primary-lavender: #E6E6FA;
-  --accent-mint: #F5FFFA;
-  --accent-peach: #FFE5B4;
-  --accent-sky: #87CEEB;
-  --accent-blush: #FFF0F5;
+@theme inline {
+  --font-sans: var(--font-inter), Arial, Helvetica, sans-serif;
+  --font-inter: var(--font-inter);
+  
+  /* Fonts */
+  --font-display-lg: var(--font-inter);
+  --font-label-sm: var(--font-inter);
+  --font-body-lg: var(--font-inter);
+  --font-label-md: var(--font-inter);
+  --font-headline-md: var(--font-inter);
+  --font-display-lg-mobile: var(--font-inter);
+  --font-body-md: var(--font-inter);
+
+  /* Colors */
+  --color-primary-container: #2b78bf;
+  --color-surface-container-low: #eef4ff;
+  --color-secondary-fixed: #d2e4ff;
+  --color-primary-fixed-dim: #a0caff;
+  --color-background: #f7f9ff;
+  --color-surface-variant: #d6e4f6;
+  --color-tertiary-container: #3a7aa6;
+  --color-on-primary-container: #fdfcff;
+  --color-primary: #005ea1;
+  --color-primary-fixed: #d2e4ff;
+  --color-surface-bright: #f7f9ff;
+  --color-on-surface-variant: #414751;
+  --color-secondary: #1a61a1;
+  --color-on-tertiary-fixed: #001e30;
+  --color-surface-container-high: #dce9fc;
+  --color-surface: #f7f9ff;
+  --color-secondary-fixed-dim: #a1c9ff;
+  --color-on-tertiary: #ffffff;
+  --color-on-secondary-container: #004980;
+  --color-on-primary-fixed: #001c37;
+  --color-surface-container-lowest: #ffffff;
+  --color-on-secondary-fixed-variant: #004880;
+  --color-surface-container-highest: #d6e4f6;
+  --color-on-tertiary-fixed-variant: #004b70;
+  --color-on-background: #0f1d2a;
+  --color-secondary-container: #80b9ff;
+  --color-outline: #717782;
+  --color-on-error-container: #93000a;
+  --color-on-secondary-fixed: #001c37;
+  --color-tertiary-fixed-dim: #90cdfd;
+  --color-tertiary: #18618c;
+  --color-on-primary-fixed-variant: #00497e;
+  --color-on-tertiary-container: #fcfcff;
+  --color-tertiary-fixed: #cae6ff;
+  --color-surface-container: #e4efff;
+  --color-error: #ba1a1a;
+  --color-surface-dim: #cedbee;
+  --color-error-container: #ffdad6;
+  --color-outline-variant: #c1c7d2;
+  --color-on-surface: #0f1d2a;
+  --color-inverse-surface: #253240;
+  --color-inverse-primary: #a0caff;
+  --color-inverse-on-surface: #e9f1ff;
+  --color-on-primary: #ffffff;
+  --color-on-secondary: #ffffff;
+  --color-surface-tint: #0061a5;
+  --color-on-error: #ffffff;
+  --color-bordermist: #DDE6ED;
+  --color-skytint: #EAF4FC;
+  --color-coral-cta: #FF9770;
+
+  /* Border Radius */
+  --radius: 0.25rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 10px;
+  --radius-2xl: 16px;
+  --radius-3xl: 20px;
+  --radius-full: 9999px;
+
+  /* Spacing */
+  --spacing-container-margin: 24px;
+  --spacing-base: 4px;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-gutter: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
 }
 
-body {
-  background-color: var(--primary-lavender);
-  color: #333;
+/* Custom Text Sizes Utilities for Tailwind v4 */
+@utility text-display-lg {
+  font-size: 48px;
+  line-height: 56px;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+@utility text-label-sm {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+}
+@utility text-body-lg {
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 400;
+}
+@utility text-label-md {
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 0.01em;
+  font-weight: 500;
+}
+@utility text-headline-md {
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+@utility text-display-lg-mobile {
+  font-size: 32px;
+  line-height: 40px;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+@utility text-body-md {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+}
+
+/* Typography Overrides (for mapping custom fonts easily) */
+@utility font-body-md {
+  font-family: var(--font-inter);
+}
+@utility font-headline-md {
+  font-family: var(--font-inter);
+}
+@utility font-label-sm {
+  font-family: var(--font-inter);
+}
+@utility font-label-md {
+  font-family: var(--font-inter);
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-on-surface);
+    font-family: var(--font-inter), sans-serif;
+  }
+
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #DDE6ED;
+    border-radius: 10px;
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+}
+
+@utility animate-pulse-soft {
+  animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
