@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-lavender: #E6E6FA;
+  --accent-mint: #F5FFFA;
+  --accent-peach: #FFE5B4;
+  --accent-sky: #87CEEB;
+  --accent-blush: #FFF0F5;
+}
+
+body {
+  background-color: var(--primary-lavender);
+  color: #333;
+}
