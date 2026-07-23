@@ -32,6 +32,8 @@ export default function StudyPlan() {
             is_done: t.is_done
           }));
           setStudyBlocks(blocks);
+        } else {
+          setStudyBlocks([]);
         }
         setLoading(false);
       })
@@ -40,6 +42,37 @@ export default function StudyPlan() {
       setLoading(false);
     }
   };
+
+  const handleToggleTask = async (taskId: string) => {
+    if (!token) return;
+    
+    // Optimistic UI update
+    setStudyBlocks(prev => prev.map(b => 
+      b.id === taskId ? { ...b, is_done: !b.is_done } : b
+    ));
+
+    try {
+      await fetch(`http://localhost:8000/tasks/${taskId}/toggle`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch {
+      // Revert if failed
+      setStudyBlocks(prev => prev.map(b => 
+        b.id === taskId ? { ...b, is_done: !b.is_done } : b
+      ));
+    }
+  };
+
+  // Group blocks by date for the calendar view
+  const blocksByDate = studyBlocks.reduce((acc: any, block) => {
+    if (!acc[block.date]) acc[block.date] = [];
+    acc[block.date].push(block);
+    return acc;
+  }, {});
+
+  const sortedDates = Object.keys(blocksByDate).sort();
+  const todayStr = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
     fetchPlan();
@@ -94,18 +127,40 @@ export default function StudyPlan() {
         {/* Bento Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-gutter pb-10">
           
-          {/* Weekly Schedule */}
+          {/* Weekly Schedule / Calendar */}
           <motion.section 
             variants={containerVariants}
             initial="hidden"
             animate="show"
-            className="lg:col-span-12 grid grid-cols-1 md:grid-cols-5 gap-4"
+            className="lg:col-span-12"
           >
-            <DayCard day="Mon" date="Oct 16" blocks={studyBlocks.slice(0, 1)} />
-            <DayCard day="Tue" date="Oct 17" isToday={true} blocks={studyBlocks.slice(1, 3)} />
-            <DayCard day="Wed" date="Oct 18" blocks={studyBlocks.slice(3, 5)} />
-            <DayCard day="Thu" date="Oct 19" blocks={studyBlocks.slice(5, 7)} />
-            <DayCard day="Fri" date="Oct 20" blocks={studyBlocks.slice(7)} />
+            {sortedDates.length === 0 && !loading ? (
+              <div className="flex flex-col items-center justify-center p-10 bg-surface-container-lowest border border-outline-variant rounded-xl text-center">
+                <span className="material-symbols-outlined text-4xl text-outline mb-2">event_busy</span>
+                <p className="font-bold text-on-surface">No Study Plan Found</p>
+                <p className="text-sm text-on-surface-variant mt-1 mb-4">Click "Regenerate Plan" to let the AI build your domain-specific schedule.</p>
+              </div>
+            ) : (
+              <div className="flex overflow-x-auto gap-4 pb-4 custom-scrollbar snap-x">
+                {sortedDates.map((dateStr: string) => {
+                  const d = new Date(dateStr);
+                  const dayName = d.toLocaleDateString(undefined, { weekday: 'short' });
+                  const formattedDate = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                  
+                  return (
+                    <div key={dateStr} className="snap-start">
+                      <DayCard 
+                        day={dayName} 
+                        date={formattedDate} 
+                        isToday={dateStr === todayStr} 
+                        blocks={blocksByDate[dateStr]} 
+                        onToggleTask={handleToggleTask}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </motion.section>
 
           {/* Left Column: AI Suggestions & Focus Tags */}
