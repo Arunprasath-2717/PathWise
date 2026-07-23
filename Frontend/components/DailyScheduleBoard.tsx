@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { motion } from "framer-motion";
 import { StudyBlock } from "./DayCard";
 
 interface DailyScheduleBoardProps {
@@ -10,74 +9,50 @@ interface DailyScheduleBoardProps {
   onToggleTask?: (taskId: string) => void;
 }
 
-// Helper to generate sequential time slots
-function generateTimeSlots(blocks: StudyBlock[]) {
-  let currentHour = 6; // Start at 6:00 AM
-  let currentMinute = 0;
+const TEMPLATE_SLOTS = [
+  { time: "6:00 AM - 6:30 AM", type: "Morning Routine", text: "Personal hygiene and light stretching or meditation", isStudy: false },
+  { time: "6:30 AM - 7:00 AM", type: "Review", text: "Review yesterday's notes or study material", isStudy: false },
+  { time: "7:00 AM - 10:00 AM", type: "Deep Focus", text: "Choose a subject, focus on concepts and solving problems", isStudy: true },
+  { time: "10:00 AM - 10:30 AM", type: "Break", text: "Take a short break for breakfast", isStudy: false },
+  { time: "10:30 AM - 1:00 PM", type: "Deep Focus", text: "Then change the subject", isStudy: true },
   
-  return blocks.map(block => {
-    // Parse duration. e.g., "1 hr", "0.5 hr", "2 hr"
-    let durHours = 1;
-    if (block.duration) {
-      const parsed = parseFloat(block.duration.split(' ')[0]);
-      if (!isNaN(parsed)) durHours = parsed;
-    }
-    
-    // Format start time
-    const startPeriod = currentHour >= 12 ? "PM" : "AM";
-    let dispStartHour = currentHour > 12 ? currentHour - 12 : currentHour;
-    if (dispStartHour === 0) dispStartHour = 12;
-    const dispStartMin = currentMinute.toString().padStart(2, '0');
-    const startTimeStr = `${dispStartHour}:${dispStartMin} ${startPeriod}`;
-
-    // Add duration
-    let endHour = currentHour + Math.floor(durHours);
-    let endMinute = currentMinute + (durHours % 1) * 60;
-    if (endMinute >= 60) {
-      endHour += Math.floor(endMinute / 60);
-      endMinute = endMinute % 60;
-    }
-
-    // Format end time
-    const endPeriod = endHour >= 12 && endHour < 24 ? "PM" : "AM";
-    let dispEndHour = endHour > 12 ? endHour - 12 : endHour;
-    if (dispEndHour === 0) dispEndHour = 12;
-    const dispEndMin = endMinute.toString().padStart(2, '0');
-    const endTimeStr = `${dispEndHour}:${dispEndMin} ${endPeriod}`;
-
-    // Update current for next block
-    currentHour = endHour;
-    currentMinute = endMinute;
-
-    return {
-      ...block,
-      timeSlot: `${startTimeStr} - ${endTimeStr}`
-    };
-  });
-}
+  { time: "1:00 PM - 2:00 PM", type: "Break", text: "Take your lunch and relax for some time.", isStudy: false },
+  { time: "2:00 PM - 4:00 PM", type: "School", text: "Complete school or online classes and homework", isStudy: false },
+  { time: "4:00 PM - 5:00 PM", type: "Practice", text: "Practice papers or focus on a subject you find difficult", isStudy: true },
+  { time: "5:00 PM - 6:00 PM", type: "Activity", text: "Outdoor activity, exercise, or hobbies", isStudy: false },
+  { time: "6:00 PM - 7:00 PM", type: "Review", text: "Review notes from the day's lessons", isStudy: false },
+  
+  { time: "7:00 PM - 8:00 PM", type: "Break", text: "Dinner and relaxation", isStudy: false },
+  { time: "8:00 PM - 9:00 PM", type: "Free Time", text: "Free time or catch up on any missed studies", isStudy: false },
+  { time: "9:00 PM - 9:30 PM", type: "Wind Down", text: "Prepare for bed, read a book, etc", isStudy: false },
+  { time: "9:30 PM", type: "Rest", text: "Sleep", isStudy: false },
+  { time: "", type: "Empty", text: "", isStudy: false },
+];
 
 export function DailyScheduleBoard({ date, blocks, onToggleTask }: DailyScheduleBoardProps) {
-  const blocksWithTime = useMemo(() => generateTimeSlots(blocks), [blocks]);
-
-  // Fill up to a multiple of 5 for a perfect grid if needed
-  const filledBlocks = [...blocksWithTime];
-  const remainder = filledBlocks.length % 5;
-  if (remainder !== 0 && filledBlocks.length > 0) {
-    const toAdd = 5 - remainder;
-    for (let i = 0; i < toAdd; i++) {
-      filledBlocks.push({
-        id: `empty-${i}`,
-        title: "",
-        type: "Empty",
-        time: "",
-        duration: "",
-        colorClass: "",
-        date: date,
-        is_done: false,
-        timeSlot: ""
-      });
-    }
-  }
+  
+  // Inject the actual generated tasks into the designated study slots
+  const filledSlots = useMemo(() => {
+    let taskIndex = 0;
+    return TEMPLATE_SLOTS.map((slot) => {
+      if (slot.isStudy && taskIndex < blocks.length) {
+        const studentTask = blocks[taskIndex];
+        taskIndex++;
+        return {
+          ...slot,
+          type: studentTask.type || slot.type,
+          text: studentTask.title,
+          id: studentTask.id,
+          is_done: studentTask.is_done
+        };
+      }
+      return {
+        ...slot,
+        id: `fixed-${Math.random()}`,
+        is_done: false
+      };
+    });
+  }, [blocks]);
 
   if (blocks.length === 0) {
     return (
@@ -89,59 +64,66 @@ export function DailyScheduleBoard({ date, blocks, onToggleTask }: DailySchedule
     );
   }
 
-  const redAccent = "#f87171"; // Tailwind red-400 equivalent for the schedule
+  const redAccent = "#fd6b68"; 
 
   return (
-    <div className="w-full bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200 mt-4 relative">
+    <div className="w-full bg-[#f9f9f9] rounded-xl shadow-md overflow-hidden border border-gray-200 mt-6 relative">
       {/* Top Banner Area */}
-      <div className="bg-[#f0f0f0] pt-6 pb-8 relative flex items-center justify-center">
-        <h2 className="text-3xl font-black tracking-widest uppercase text-gray-800">
-          DAILY SCHEDULE <span className="text-lg text-gray-500 font-medium ml-2 capitalize">({date})</span>
+      <div className="bg-[#e9ecef] pt-6 pb-6 relative flex items-center justify-center border-b-[16px]" style={{ borderColor: redAccent }}>
+        <h2 className="text-4xl font-black tracking-widest uppercase text-gray-900 mt-2 mb-2">
+          DAILY SCHEDULE <span className="text-xl text-gray-600 font-medium ml-2 capitalize tracking-normal">({date})</span>
         </h2>
-      </div>
-
-      {/* The Red Binder Strip */}
-      <div className="h-6 w-full relative" style={{ backgroundColor: redAccent }}>
+        
         {/* Binder Rings */}
-        <div className="absolute -top-6 left-0 w-full flex justify-around px-8">
+        <div className="absolute -bottom-6 left-0 w-full flex justify-around px-8">
           {[1, 2, 3, 4, 5].map((ring) => (
-            <div key={ring} className="w-4 h-10 bg-gray-400 rounded-full shadow-md z-10 border-2 border-gray-300"></div>
+            <div key={ring} className="w-6 h-12 bg-[#a3a3a3] rounded-full shadow-md z-10 border-2 border-gray-100 flex items-center justify-center">
+              <div className="w-4 h-10 bg-[#8c8c8c] rounded-full"></div>
+            </div>
           ))}
         </div>
       </div>
 
       {/* Grid Table */}
-      <div className="grid grid-cols-1 md:grid-cols-5 border-l-4 border-r-4 border-b-4 bg-white" style={{ borderColor: redAccent }}>
-        {filledBlocks.map((block, idx) => {
+      <div className="grid grid-cols-1 md:grid-cols-5 bg-white">
+        {filledSlots.map((slot, idx) => {
           const isRightCol = (idx + 1) % 5 === 0;
-          const isBottomRow = idx >= filledBlocks.length - 5;
-          const isEmpty = block.type === "Empty";
+          const isBottomRow = idx >= filledSlots.length - 5;
+          const isEmpty = slot.type === "Empty";
+          const isStudentTask = slot.isStudy;
 
           return (
             <div 
-              key={block.id} 
-              onClick={() => !isEmpty && onToggleTask && onToggleTask(block.id)}
+              key={slot.id} 
+              onClick={() => isStudentTask && slot.id && onToggleTask && onToggleTask(slot.id)}
               className={`
                 min-h-[140px] p-4 flex flex-col items-center text-center relative
                 ${!isRightCol ? 'border-r-4' : ''} 
                 ${!isBottomRow ? 'border-b-4' : ''}
-                ${!isEmpty ? 'cursor-pointer hover:bg-red-50 transition-colors' : ''}
-                ${block.is_done ? 'bg-gray-100 opacity-70' : ''}
+                ${isStudentTask ? 'cursor-pointer hover:bg-red-50 transition-colors bg-white' : 'bg-[#fafafa]'}
+                ${slot.is_done ? 'bg-gray-100 opacity-70' : ''}
               `}
               style={{ borderColor: redAccent }}
             >
               {!isEmpty && (
                 <>
-                  <div className="font-bold text-sm mb-2" style={{ color: redAccent }}>
-                    {block.timeSlot}
+                  <div className="font-bold text-sm mb-2 uppercase tracking-wide" style={{ color: redAccent }}>
+                    {slot.time}
                   </div>
-                  <div className={`text-sm text-gray-800 font-medium ${block.is_done ? 'line-through text-gray-500' : ''}`}>
-                    <span className="block mb-1 font-bold text-gray-900">{block.type}</span>
-                    {block.title}
+                  <div className={`text-[15px] leading-snug text-gray-800 ${slot.is_done ? 'line-through text-gray-500' : ''}`}>
+                    {isStudentTask && (
+                      <span className="block mb-1 font-bold text-gray-900">{slot.type}</span>
+                    )}
+                    {slot.text}
                   </div>
-                  {block.is_done && (
+                  {slot.is_done && (
                     <div className="absolute top-2 right-2 text-green-500">
                       <span className="material-symbols-outlined text-xl">check_circle</span>
+                    </div>
+                  )}
+                  {isStudentTask && !slot.is_done && (
+                    <div className="absolute top-2 right-2 text-primary opacity-50">
+                      <span className="material-symbols-outlined text-sm">edit_note</span>
                     </div>
                   )}
                 </>
