@@ -1,0 +1,9 @@
+node_modules/
+.next/
+__pycache__/
+venv/
+env/
+.env
+.env.local
+.DS_Store
+backend/serviceAccountKey.json
