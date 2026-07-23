@@ -139,12 +139,14 @@ def sync_user(current_user = Depends(get_current_user)):
                 "role": "student"
             }
             supabase.table("users").insert(user_data).execute()
-            
+        
+        # Always ensure profile exists
+        profile_existing = supabase.table("student_profiles").select("id").eq("user_id", current_user.id).execute()
+        if not profile_existing.data:
             profile_data = {
                 "user_id": current_user.id
             }
             supabase.table("student_profiles").insert(profile_data).execute()
-            
             
         return {"message": "User synced successfully", "id": current_user.id}
     except Exception as e:
@@ -262,7 +264,7 @@ def get_analysis(student_id: str):
     # Fetch all scores for the student
     scores_res = supabase.table("scores").select("*").eq("student_id", student_id).order("test_date").execute()
     if not scores_res.data:
-        raise HTTPException(status_code=404, detail="No scores found for this student")
+        return {"analysis": []}
     
     # Group scores by subject and compute avg + trend
     subjects = {}
