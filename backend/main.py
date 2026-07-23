@@ -1,9 +1,10 @@
 import os
+import hashlib
 import json
 import pandas as pd
 from datetime import date, datetime, timedelta
 from typing import Optional, List
-from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Header
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File, Header, Cookie, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
@@ -74,6 +75,26 @@ class DayTask(BaseModel):
     subject: str
     hours: float
     description: str
+
+class FacultyLoginRequest(BaseModel):
+    email: str
+    password: str
+
+# ─── Faculty Session Store ───────────────────────────────────────────────────
+
+# Simple in-memory session store for faculty (no Firebase needed)
+faculty_sessions: dict[str, dict] = {}
+
+# Default faculty credentials (in production, store in DB with hashed passwords)
+FACULTY_CREDENTIALS = {
+    "faculty@pathwise.edu": hashlib.sha256("faculty123".encode()).hexdigest(),
+    "admin@pathwise.edu": hashlib.sha256("admin123".encode()).hexdigest(),
+}
+
+def get_faculty_session(session_id: str = Cookie(None, alias="faculty_session")):
+    if not session_id or session_id not in faculty_sessions:
+        raise HTTPException(status_code=401, detail="Faculty session expired or invalid. Please login.")
+    return faculty_sessions[session_id]
 
 # ─── Auth Helper ──────────────────────────────────────────────────────────────
 
@@ -685,3 +706,135 @@ def dashboard(student_id: str):
         "wellbeing": today_wellbeing,
         "readiness": readiness_data
     }
+
+# ─── Faculty Session Auth ─────────────────────────────────────────────────────
+
+@app.post("/faculty/login")
+def faculty_login(req: FacultyLoginRequest, response: Response):
+    hashed = hashlib.sha256(req.password.encode()).hexdigest()
+    if req.email not in FACULTY_CREDENTIALS or FACULTY_CREDENTIALS[req.email] != hashed:
+        raise HTTPException(status_code=401, detail="Invalid faculty credentials")
+    
+    session_id = str(uuid.uuid4())
+    faculty_sessions[session_id] = {"email": req.email, "role": "faculty"}
+    
+    response.set_cookie(
+        key="faculty_session",
+        value=session_id,
+        httponly=True,
+        samesite="lax",
+        max_age=86400  # 24 hours
+    )
+    return {"message": "Faculty login successful", "email": req.email}
+
+@app.post("/faculty/logout")
+def faculty_logout(response: Response, session_id: str = Cookie(None, alias="faculty_session")):
+    if session_id and session_id in faculty_sessions:
+        del faculty_sessions[session_id]
+    response.delete_cookie("faculty_session")
+    return {"message": "Logged out successfully"}
+
+@app.get("/faculty/me")
+def faculty_me(session: dict = Depends(get_faculty_session)):
+    return {"email": session["email"], "role": session["role"]}
+
+# ─── Faculty: Low-Scored Students ─────────────────────────────────────────────
+
+@app.get("/faculty/low-scored-students")
+def get_low_scored_students(session: dict = Depends(get_faculty_session)):
+    """Get all students who have at least one 'weak' subject."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    # Get all weak analyses
+    weak_res = supabase.table("subjects_analysis").select("*").eq("status", "weak").execute()
+    
+    if not weak_res.data:
+        return {"students": []}
+    
+    # Group by student_id
+    student_map = {}
+    for entry in weak_res.data:
+        sid = entry["student_id"]
+        if sid not in student_map:
+            student_map[sid] = {
+                "student_id": sid,
+                "weak_subjects": [],
+                "email": "",
+                "lowest_score": 100
+            }
+        student_map[sid]["weak_subjects"].append({
+            "subject": entry["subject"],
+            "avg_score": entry["avg_score"],
+            "trend": entry["trend"],
+            "reason": entry["reason"]
+        })
+        if entry["avg_score"] < student_map[sid]["lowest_score"]:
+            student_map[sid]["lowest_score"] = entry["avg_score"]
+    
+    # Fetch user emails
+    for sid in student_map:
+        profile_res = supabase.table("student_profiles").select("user_id").eq("id", sid).execute()
+        if profile_res.data:
+            user_id = profile_res.data[0]["user_id"]
+            user_res = supabase.table("users").select("email").eq("id", user_id).execute()
+            if user_res.data:
+                student_map[sid]["email"] = user_res.data[0]["email"]
+    
+    students = sorted(student_map.values(), key=lambda s: s["lowest_score"])
+    return {"students": students}
+
+# ─── Faculty: View Student Study Plan ─────────────────────────────────────────
+
+@app.get("/faculty/student-plan/{student_id}")
+def faculty_view_student_plan(student_id: str, session: dict = Depends(get_faculty_session)):
+    """Faculty views a student's current active study plan grouped by week/day."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    plans_res = supabase.table("study_plans").select("id").eq("student_id", student_id).eq("is_active", True).execute()
+    if not plans_res.data:
+        return {"plan": None, "weekly_schedule": {}}
+    
+    plan_id = plans_res.data[0]["id"]
+    tasks_res = supabase.table("tasks").select("*").eq("study_plan_id", plan_id).order("date").execute()
+    
+    # Group tasks into weekly day-wise schedule
+    weekly_schedule = {}
+    for task in (tasks_res.data or []):
+        task_date = task["date"]
+        try:
+            dt = datetime.strptime(task_date, "%Y-%m-%d")
+            week_num = dt.isocalendar()[1]
+            day_name = dt.strftime("%A")
+            week_key = f"Week {week_num}"
+        except:
+            week_key = "Unscheduled"
+            day_name = "Unknown"
+        
+        if week_key not in weekly_schedule:
+            weekly_schedule[week_key] = {}
+        if day_name not in weekly_schedule[week_key]:
+            weekly_schedule[week_key][day_name] = []
+        
+        weekly_schedule[week_key][day_name].append({
+            "id": task["id"],
+            "date": task_date,
+            "subject": task["subject"],
+            "hours": task["hours"],
+            "description": task["description"],
+            "is_done": task["is_done"]
+        })
+    
+    return {"plan_id": plan_id, "student_id": student_id, "weekly_schedule": weekly_schedule}
+
+# ─── Faculty: Regenerate Student Study Plan ───────────────────────────────────
+
+@app.post("/faculty/regenerate-plan/{student_id}")
+def faculty_regenerate_plan(student_id: str, session: dict = Depends(get_faculty_session)):
+    """Faculty can regenerate a student's study plan (same AI logic, faculty-triggered)."""
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    # Reuse the existing generate_study_plan logic
+    return generate_study_plan(student_id)
