@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { PageTransition } from "@/components/PageTransition";
-import { DayCard } from "@/components/DayCard";
+import { DailyScheduleBoard } from "@/components/DailyScheduleBoard";
 import { ProgressRing } from "@/components/ProgressRing";
 import { useAuth } from "@/components/AuthContext";
 
@@ -127,7 +127,7 @@ export default function StudyPlan() {
         {/* Bento Grid Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-gutter pb-10">
           
-          {/* Weekly Schedule / Calendar */}
+          {/* Daily Schedule Board */}
           <motion.section 
             variants={containerVariants}
             initial="hidden"
@@ -141,18 +141,15 @@ export default function StudyPlan() {
                 <p className="text-sm text-on-surface-variant mt-1 mb-4">Click "Regenerate Plan" to let the AI build your domain-specific schedule.</p>
               </div>
             ) : (
-              <div className="flex overflow-x-auto gap-4 pb-4 custom-scrollbar snap-x">
+              <div className="flex flex-col gap-8 pb-4">
                 {sortedDates.map((dateStr: string) => {
                   const d = new Date(dateStr);
-                  const dayName = d.toLocaleDateString(undefined, { weekday: 'short' });
-                  const formattedDate = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                  const formattedDate = d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
                   
                   return (
-                    <div key={dateStr} className="snap-start">
-                      <DayCard 
-                        day={dayName} 
+                    <div key={dateStr}>
+                      <DailyScheduleBoard 
                         date={formattedDate} 
-                        isToday={dateStr === todayStr} 
                         blocks={blocksByDate[dateStr]} 
                         onToggleTask={handleToggleTask}
                       />
