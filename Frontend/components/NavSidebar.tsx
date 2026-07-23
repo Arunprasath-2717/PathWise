@@ -4,10 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { mockUser } from "@/lib/mock-data";
 import { motion } from "framer-motion";
+import { useAuth } from "@/components/AuthContext";
 
 export function NavSidebar() {
   const pathname = usePathname();
   const isAdmin = pathname.startsWith("/admin");
+  const { user } = useAuth();
 
   const studentLinks = [
     { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
@@ -43,7 +45,7 @@ export function NavSidebar() {
                 whileTap={{ scale: 0.98 }}
                 className={`flex items-center gap-3 w-full p-3 rounded-lg transition-colors duration-150 ${
                   isActive
-                    ? "bg-secondary-fixed text-on-secondary-fixed-variant font-bold"
+                    ? "bg-primary-container text-on-primary-container font-bold"
                     : "text-on-surface-variant hover:bg-surface-container-high"
                 }`}
               >
@@ -84,10 +86,10 @@ export function NavSidebar() {
 
         {!isAdmin && (
           <div className="p-3 mt-md flex items-center gap-3 bg-surface-container-high rounded-xl border border-outline-variant">
-            <img className="w-10 h-10 rounded-full border border-primary object-cover" src={mockUser.avatar} alt={mockUser.name} />
+            <img className="w-10 h-10 rounded-full border border-primary object-cover" src={user?.photoURL || mockUser.avatar} alt={user?.displayName || "Student"} />
             <div className="overflow-hidden">
-              <p className="font-label-md text-label-md font-bold truncate">{mockUser.name}</p>
-              <p className="text-[10px] text-on-surface-variant opacity-70">{mockUser.major}</p>
+              <p className="font-label-md text-label-md font-bold truncate">{user?.displayName || "Student"}</p>
+              <p className="text-[10px] text-on-surface-variant opacity-70 truncate">{user?.email || "Student"}</p>
             </div>
           </div>
         )}

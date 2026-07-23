@@ -1,8 +1,10 @@
 "use client";
 
-import React from "react";
-import { motion } from "framer-motion";
+import React, { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { PageTransition } from "@/components/PageTransition";
+import { useAuth } from "@/components/AuthContext";
+import { updateProfile } from "firebase/auth";
 
 export default function Profile() {
   const containerVariants = {
@@ -16,6 +18,43 @@ export default function Profile() {
   const itemVariants = {
     hidden: { opacity: 0, y: 10 },
     show: { opacity: 1, y: 0, transition: { duration: 0.4 } }
+  };
+
+  const { user, logout } = useAuth();
+  
+  const [isEditing, setIsEditing] = useState(false);
+  const [newName, setNewName] = useState(user?.displayName || "");
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Update local state if user context loads late
+  React.useEffect(() => {
+    if (user?.displayName) setNewName(user.displayName);
+  }, [user]);
+
+  const handleSaveName = async () => {
+    if (!user) return;
+    setIsSaving(true);
+    try {
+      await updateProfile(user, { displayName: newName });
+      // Force a slight delay to allow Firebase to sync the local token state
+      setTimeout(() => {
+        setIsEditing(false);
+        setIsSaving(false);
+        // Dispatching a custom event to force re-renders if necessary, but Firebase onAuthStateChanged usually handles it
+      }, 500);
+    } catch (e) {
+      console.error(e);
+      setIsSaving(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      window.location.href = "/login";
+    } catch (e) {
+      console.error("Logout failed", e);
+    }
   };
 
   return (
@@ -47,15 +86,21 @@ export default function Profile() {
                 </motion.button>
               </div>
               <div className="text-center md:text-left flex-grow">
-                <h1 className="font-display-lg-mobile md:font-display-lg text-on-background mb-xs">Jane Doe</h1>
-                <p className="font-body-md text-on-surface-variant mb-md">jane.doe@pathwise-edu.com</p>
+                <h1 className="font-display-lg-mobile md:font-display-lg text-on-background mb-xs">
+                  {user?.displayName || "Student"}
+                </h1>
+                <p className="font-body-md text-on-surface-variant mb-md">{user?.email || "student@pathwise.edu"}</p>
                 <div className="flex flex-wrap justify-center md:justify-start gap-sm">
                   <span className="px-3 py-1 rounded-full bg-secondary-fixed text-on-secondary-fixed-variant font-label-sm">Senior Student</span>
-                  <span className="px-3 py-1 rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-label-sm">Top 5% Rank</span>
+                  <span className="px-3 py-1 rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-label-sm">Active Learner</span>
                 </div>
               </div>
               <div className="mt-md md:mt-0">
-                <motion.button whileTap={{ scale: 0.95 }} className="px-md py-2 border-2 border-secondary text-secondary rounded-[10px] font-bold hover:bg-surface-container-low transition-colors">
+                <motion.button 
+                  onClick={handleLogout}
+                  whileTap={{ scale: 0.95 }} 
+                  className="px-md py-2 border-2 border-secondary text-secondary rounded-[10px] font-bold hover:bg-surface-container-low transition-colors"
+                >
                   Log Out
                 </motion.button>
               </div>
@@ -109,13 +154,20 @@ export default function Profile() {
               </div>
               <div className="divide-y divide-outline-variant">
                 {[
-                  { icon: "person_outline", title: "Personal Information", desc: "Name, email, and social profiles", error: false },
-                  { icon: "lock_open", title: "Security", desc: "Password, 2FA, and sessions", error: false },
-                  { icon: "notifications_active", title: "Notifications", desc: "Email alerts and push preferences", error: false },
-                  { icon: "credit_card", title: "Billing", desc: "Manage subscription and invoices", error: false },
-                  { icon: "delete", title: "Deactivate Account", desc: "Permanently remove all your data", error: true }
+                  { id: "personal", icon: "person_outline", title: "Personal Information", desc: "Name, email, and social profiles", error: false },
+                  { id: "security", icon: "lock_open", title: "Security", desc: "Password, 2FA, and sessions", error: false },
+                  { id: "notifications", icon: "notifications_active", title: "Notifications", desc: "Email alerts and push preferences", error: false },
+                  { id: "billing", icon: "credit_card", title: "Billing", desc: "Manage subscription and invoices", error: false },
+                  { id: "deactivate", icon: "delete", title: "Deactivate Account", desc: "Permanently remove all your data", error: true }
                 ].map((setting, i) => (
-                  <motion.a whileHover={{ x: 4 }} key={i} className="flex items-center justify-between p-lg hover:bg-surface-container-low transition-colors group cursor-pointer">
+                  <motion.a 
+                    onClick={() => {
+                      if (setting.id === "personal") setIsEditing(true);
+                    }}
+                    whileHover={{ x: 4 }} 
+                    key={i} 
+                    className="flex items-center justify-between p-lg hover:bg-surface-container-low transition-colors group cursor-pointer"
+                  >
                     <div className="flex items-center gap-md">
                       <span className={`material-symbols-outlined ${setting.error ? 'text-error group-hover:scale-110 transition-transform' : 'text-on-surface-variant group-hover:text-primary'}`}>{setting.icon}</span>
                       <div>
@@ -129,6 +181,59 @@ export default function Profile() {
               </div>
             </motion.section>
           </motion.div>
+          
+          {/* Edit Name Modal */}
+          <AnimatePresence>
+            {isEditing && (
+              <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+              >
+                <motion.div 
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.95, opacity: 0 }}
+                  className="bg-surface rounded-2xl p-xl max-w-md w-full shadow-lg"
+                >
+                  <h2 className="text-2xl font-bold text-on-surface mb-4">Edit Personal Information</h2>
+                  <div className="mb-6">
+                    <label className="block text-sm font-bold text-on-surface-variant mb-2">Display Name</label>
+                    <input 
+                      type="text" 
+                      value={newName} 
+                      onChange={(e) => setNewName(e.target.value)}
+                      className="w-full px-4 py-3 rounded-lg border border-outline focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all"
+                      placeholder="Enter your name"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3">
+                    <button 
+                      onClick={() => setIsEditing(false)}
+                      className="px-6 py-2 rounded-lg font-bold text-on-surface-variant hover:bg-surface-container-highest transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={handleSaveName}
+                      disabled={isSaving}
+                      className="px-6 py-2 rounded-lg font-bold bg-primary text-white hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {isSaving ? (
+                        <>
+                          <span className="material-symbols-outlined animate-spin text-[20px]">sync</span>
+                          Saving...
+                        </>
+                      ) : (
+                        "Save Changes"
+                      )}
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
         </div>
       </div>
