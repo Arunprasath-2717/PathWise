@@ -100,7 +100,7 @@ def call_llm(prompt: str) -> str:
     if not groq_client:
         raise HTTPException(status_code=500, detail="Groq API key not configured")
     completion = groq_client.chat.completions.create(
-        model="llama3-8b-8192",
+        model="llama-3.1-8b-instant",
         messages=[
             {"role": "user", "content": prompt}
         ],
