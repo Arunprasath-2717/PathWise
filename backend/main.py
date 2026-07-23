@@ -178,12 +178,15 @@ def sync_user(current_user = Depends(get_current_user)):
 
 @app.post("/upload-scores")
 async def upload_scores(file: UploadFile = File(...), current_user = Depends(get_current_user)):
-    if not (file.filename.endswith('.xlsx') or file.filename.endswith('.xls') or file.filename.endswith('.csv')):
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    
+    fname = (file.filename or "").lower()
+    if not (fname.endswith('.xlsx') or fname.endswith('.xls') or fname.endswith('.csv')):
         raise HTTPException(status_code=400, detail="Only .csv, .xls, and .xlsx files are supported")
     
     try:
-        # Get student_id from student_profiles for the current user
-        # Adding a small retry loop to handle intermittent SSL drops in httpx on Windows
+        # Get student_id
         import time
         profile_res = None
         for attempt in range(3):
@@ -198,82 +201,215 @@ async def upload_scores(file: UploadFile = File(...), current_user = Depends(get
             raise HTTPException(status_code=404, detail="Student profile not found")
         student_id = profile_res.data[0]['id']
 
-        if file.filename.endswith('.csv'):
-            df = pd.read_csv(file.file)
-        else:
-            df = pd.read_excel(file.file)
+        # Read file — handle mislabeled extensions
+        raw_bytes = await file.read()
+        if len(raw_bytes) == 0:
+            raise HTTPException(status_code=400, detail="File is empty")
         
-        # Make column matching case-insensitive and strip whitespace
-        df.columns = df.columns.str.strip().str.lower()
+        import io
+        df = None
+        if fname.endswith('.csv'):
+            try:
+                df = pd.read_csv(io.BytesIO(raw_bytes))
+            except Exception:
+                # Maybe it's actually an Excel file mislabeled as .csv
+                try:
+                    df = pd.read_excel(io.BytesIO(raw_bytes))
+                except Exception:
+                    raise HTTPException(status_code=400, detail="Could not parse file. Ensure it is a valid CSV or Excel file.")
+        else:
+            try:
+                df = pd.read_excel(io.BytesIO(raw_bytes))
+            except Exception:
+                # Maybe it's actually a CSV file mislabeled as .xlsx
+                try:
+                    df = pd.read_csv(io.BytesIO(raw_bytes))
+                except Exception:
+                    raise HTTPException(status_code=400, detail="Could not parse file. Ensure it is a valid CSV or Excel file.")
+        
+        if df is None or df.empty:
+            raise HTTPException(status_code=400, detail="File contains no data rows")
+        
+        # Drop completely blank rows
+        df = df.dropna(how='all').reset_index(drop=True)
+        if df.empty:
+            raise HTTPException(status_code=400, detail="File contains only blank rows")
+        
+        # Normalize column names
+        df.columns = df.columns.astype(str).str.strip().str.lower()
+        
+        import datetime as dt
+        today_str = dt.datetime.now().strftime('%Y-%m-%d')
         
         records = []
-        import datetime
-        today_str = datetime.datetime.now().strftime('%Y-%m-%d')
+        skipped = 0
+        errors_detail = []
         
-        # Check if it's the wide format (e.g., student_name, maths_marks, science_marks)
-        marks_cols = [c for c in df.columns if 'marks' in c or 'score' in c and c != 'max_score']
+        # Detect format: wide vs long
+        marks_cols = [c for c in df.columns if ('marks' in c or 'score' in c) and 'max' not in c]
+        is_wide = 'student_name' in df.columns and len(marks_cols) > 0 and 'subject' not in df.columns
         
-        if 'student_name' in df.columns and len(marks_cols) > 0 and 'subject' not in df.columns:
-            # Wide format detected
-            for _, row in df.iterrows():
+        if is_wide:
+            for idx, row in df.iterrows():
                 for col in marks_cols:
-                    # extract subject from something like 'maths_marks' or 'science score'
                     subject = col.replace('_marks', '').replace('_score', '').replace('_', ' ').strip().title()
+                    if not subject:
+                        skipped += 1
+                        continue
                     try:
                         score = float(row[col])
+                        if pd.isna(score):
+                            skipped += 1
+                            continue
+                        # Clamp negative scores to 0
+                        score = max(0, score)
                         records.append({
                             "student_id": student_id,
-                            "subject": subject,
+                            "subject": subject[:100],
                             "test_name": "General Assessment",
-                            "score": score,
+                            "score": round(score, 2),
                             "max_score": 100.0,
                             "test_date": today_str
                         })
                     except (ValueError, TypeError):
-                        pass
+                        skipped += 1
         else:
-            # Try long format mapping
+            # Long format — map columns flexibly
             col_map = {}
             for c in df.columns:
-                if 'name' in c and 'test' not in c: col_map['student_name'] = c
-                elif 'subject' in c: col_map['subject'] = c
-                elif 'test' in c or 'exam' in c: col_map['test_name'] = c
-                elif 'max' in c: col_map['max_score'] = c
-                elif 'score' in c or 'mark' in c: col_map['score'] = c
-                elif 'date' in c: col_map['date'] = c
-                
-            required = ['student_name', 'subject', 'test_name', 'score', 'max_score', 'date']
-            missing = [req for req in required if req not in col_map]
-            if missing:
-                raise HTTPException(status_code=400, detail=f"Missing columns. Required concepts: {missing}. Found: {list(df.columns)}")
-
-            for _, row in df.iterrows():
-                subject = str(row[col_map['subject']]).strip().title()
-                records.append({
-                    "student_id": student_id,
-                    "subject": subject,
-                    "test_name": str(row[col_map['test_name']]).strip(),
-                    "score": float(row[col_map['score']]),
-                    "max_score": float(row[col_map['max_score']]),
-                    "test_date": pd.to_datetime(row[col_map['date']]).strftime('%Y-%m-%d')
-                })
-        
-        if records:
-            # Chunk the insert into batches of 50 to avoid payload SSL EOF issues
-            chunk_size = 50
-            for i in range(0, len(records), chunk_size):
-                chunk = records[i:i + chunk_size]
-                for attempt in range(3):
-                    try:
-                        supabase.table("scores").insert(chunk).execute()
-                        break
-                    except Exception as e:
-                        if attempt == 2: raise e
-                        time.sleep(1)
+                cl = c.lower()
+                if 'subject' in cl and 'subject' not in col_map:
+                    col_map['subject'] = c
+                elif ('name' in cl and 'test' not in cl) and 'student_name' not in col_map:
+                    col_map['student_name'] = c
+                elif ('test' in cl or 'exam' in cl) and 'name' in cl and 'test_name' not in col_map:
+                    col_map['test_name'] = c
+                elif 'max' in cl and ('score' in cl or 'mark' in cl) and 'max_score' not in col_map:
+                    col_map['max_score'] = c
+                elif ('score' in cl or 'mark' in cl) and 'max' not in cl and 'score' not in col_map:
+                    col_map['score'] = c
+                elif 'date' in cl and 'date' not in col_map:
+                    col_map['date'] = c
             
-        return {"message": f"Successfully uploaded {len(records)} scores"}
+            # Minimum required: subject + score
+            if 'subject' not in col_map or 'score' not in col_map:
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Missing required columns: need at least 'subject' and 'score'. Found columns: {list(df.columns)}"
+                )
+
+            for idx, row in df.iterrows():
+                try:
+                    # Subject
+                    subj_raw = row.get(col_map.get('subject', ''), None)
+                    if pd.isna(subj_raw) or str(subj_raw).strip() == '':
+                        skipped += 1
+                        continue
+                    subject = str(subj_raw).strip().title()[:100]
+                    
+                    # Score
+                    score_raw = row.get(col_map.get('score', ''), None)
+                    if pd.isna(score_raw):
+                        skipped += 1
+                        continue
+                    try:
+                        score = float(score_raw)
+                    except (ValueError, TypeError):
+                        skipped += 1
+                        continue
+                    score = max(0, score)
+                    
+                    # Max score
+                    max_score = 100.0
+                    if 'max_score' in col_map:
+                        try:
+                            ms = float(row[col_map['max_score']])
+                            if not pd.isna(ms) and ms > 0:
+                                max_score = ms
+                        except (ValueError, TypeError):
+                            pass
+                    # Guard against zero/negative max_score
+                    if max_score <= 0:
+                        max_score = 100.0
+                    
+                    # Clamp score to max_score
+                    if score > max_score:
+                        score = max_score
+                    
+                    # Test name
+                    test_name = "General Assessment"
+                    if 'test_name' in col_map:
+                        tn = row.get(col_map['test_name'], '')
+                        if not pd.isna(tn) and str(tn).strip():
+                            test_name = str(tn).strip()[:100]
+                    
+                    # Date
+                    test_date = today_str
+                    if 'date' in col_map:
+                        date_raw = row.get(col_map['date'], '')
+                        if not pd.isna(date_raw) and str(date_raw).strip():
+                            try:
+                                test_date = pd.to_datetime(date_raw, dayfirst=False, errors='coerce')
+                                if pd.isna(test_date):
+                                    test_date = today_str
+                                else:
+                                    test_date = test_date.strftime('%Y-%m-%d')
+                            except Exception:
+                                test_date = today_str
+                    
+                    records.append({
+                        "student_id": student_id,
+                        "subject": subject,
+                        "test_name": test_name,
+                        "score": round(score, 2),
+                        "max_score": round(max_score, 2),
+                        "test_date": test_date
+                    })
+                except Exception as row_err:
+                    skipped += 1
+        
+        # Deduplicate (same subject + test_name + date)
+        seen = set()
+        unique_records = []
+        for r in records:
+            key = (r["subject"], r["test_name"], r["test_date"])
+            if key not in seen:
+                seen.add(key)
+                unique_records.append(r)
+        
+        deduped = len(records) - len(unique_records)
+        records = unique_records
+        
+        if not records:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"No valid score rows found. {skipped} rows skipped due to missing/invalid data."
+            )
+        
+        # Insert in batches
+        chunk_size = 50
+        for i in range(0, len(records), chunk_size):
+            chunk = records[i:i + chunk_size]
+            for attempt in range(3):
+                try:
+                    supabase.table("scores").insert(chunk).execute()
+                    break
+                except Exception as e:
+                    if attempt == 2: raise e
+                    time.sleep(1)
+        
+        msg = f"Successfully uploaded {len(records)} scores"
+        if skipped > 0:
+            msg += f" ({skipped} rows skipped due to invalid data)"
+        if deduped > 0:
+            msg += f" ({deduped} duplicates removed)"
+        
+        return {"message": msg, "inserted": len(records), "skipped": skipped, "deduplicated": deduped}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
+
 
 # ─── Analysis Endpoint ────────────────────────────────────────────────────────
 

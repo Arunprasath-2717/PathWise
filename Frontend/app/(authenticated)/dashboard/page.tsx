@@ -19,6 +19,24 @@ export default function Dashboard() {
   const [greeting, setGreeting] = useState("Good morning");
   const [currentDate, setCurrentDate] = useState("");
 
+  // Focus Timer State
+  const [focusTime, setFocusTime] = useState(1500); // 25 minutes
+  const [focusActive, setFocusActive] = useState(false);
+  const [focusSessions, setFocusSessions] = useState(0);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (focusActive && focusTime > 0) {
+      interval = setInterval(() => {
+        setFocusTime((prev) => prev - 1);
+      }, 1000);
+    } else if (focusActive && focusTime === 0) {
+      setFocusActive(false);
+      setFocusSessions((prev) => prev + 1);
+    }
+    return () => clearInterval(interval);
+  }, [focusActive, focusTime]);
+
   useEffect(() => {
     const now = new Date();
     const hour = now.getHours();
@@ -175,7 +193,7 @@ export default function Dashboard() {
                 </motion.div>
               </motion.div>
 
-              {/* Focus Mode CTA */}
+              {/* Focus Mode Timer */}
               <motion.div 
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -190,16 +208,54 @@ export default function Dashboard() {
                   <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-md backdrop-blur-sm">
                     <span className="material-symbols-outlined text-white" style={{ fontVariationSettings: "'FILL' 1" }}>timer</span>
                   </div>
-                  <h3 className="font-headline-md text-headline-md font-bold text-white mb-xs">Ready for Focus?</h3>
-                  <p className="text-white/90 text-label-md leading-relaxed">Boost your productivity with a 25-minute Pomodoro session focused on your weakest subject.</p>
+                  
+                  {/* Timer Display */}
+                  <div className="text-center my-3">
+                    <span className="text-4xl font-black text-white tabular-nums tracking-tight">
+                      {String(Math.floor(focusTime / 60)).padStart(2, '0')}:{String(focusTime % 60).padStart(2, '0')}
+                    </span>
+                    <p className="text-white/70 text-xs mt-1 font-medium">
+                      {focusActive ? "Stay focused! 🔥" : focusTime < 1500 ? "Session paused" : "25-min Pomodoro"}
+                    </p>
+                  </div>
+
+                  {focusSessions > 0 && (
+                    <div className="flex items-center justify-center gap-1 mb-2">
+                      {Array.from({ length: focusSessions }).map((_, i) => (
+                        <span key={i} className="w-2 h-2 rounded-full bg-white/80"></span>
+                      ))}
+                      <span className="text-white/70 text-[10px] ml-1 font-bold">{focusSessions} done</span>
+                    </div>
+                  )}
                 </div>
                 
-                <motion.button 
-                  whileTap={{ scale: 0.95 }}
-                  className="relative z-10 mt-xl w-full bg-white text-[#FF9770] font-bold py-3.5 rounded-xl transition-all hover:shadow-lg hover:-translate-y-0.5"
-                >
-                  Start Focus Mode
-                </motion.button>
+                <div className="relative z-10 flex gap-2 mt-md">
+                  <motion.button 
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => {
+                      if (focusActive) {
+                        setFocusActive(false);
+                      } else {
+                        setFocusActive(true);
+                      }
+                    }}
+                    className="flex-1 bg-white text-[#FF9770] font-bold py-3 rounded-xl transition-all hover:shadow-lg hover:-translate-y-0.5 flex items-center justify-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      {focusActive ? "pause" : "play_arrow"}
+                    </span>
+                    {focusActive ? "Pause" : focusTime < 1500 ? "Resume" : "Start Focus"}
+                  </motion.button>
+                  {focusTime < 1500 && !focusActive && (
+                    <motion.button 
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => { setFocusTime(1500); setFocusActive(false); }}
+                      className="w-12 bg-white/20 text-white font-bold py-3 rounded-xl flex items-center justify-center"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">restart_alt</span>
+                    </motion.button>
+                  )}
+                </div>
               </motion.div>
             </div>
           </div>
